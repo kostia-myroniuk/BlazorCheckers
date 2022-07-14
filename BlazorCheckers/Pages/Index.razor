@@ -1,9 +1,241 @@
 ﻿@page "/"
+@using BlazorCheckers.Multiplayer
+@using ConsoleCheckers.Game
+@using Microsoft.AspNetCore.SignalR.Client;
+@inject NavigationManager NavigationManager
 
-<PageTitle>Index</PageTitle>
+<PageTitle>Checkers</PageTitle>
 
-<h1>Hello, world!</h1>
+@if (currentState == State.InLobbyList)
+{
+    <h1>Lobby list</h1>
+    <div class="form-group">
+        <label>
+            Nickname:
+            <input @bind="nicknameInput"/>
+        </label>
+        <button class="btn btn-primary" @onclick="ChangeNickname" disabled="@(!IsConnected)">Change</button>
+    </div>
+    <div class="form-group">
+        <label>
+            Lobby name:
+            <input @bind="lobbyNameInput" size="50" />
+        </label>
+        <button class="btn btn-primary" @onclick="CreateLobby" disabled="@(!IsConnected)">Create</button>
+    </div>
+    <hr>
+    <div>
+        @foreach (var item in availableLobbies.Select((lobby, index) => new { lobby, index }))
+        {
+            <div>
+                <div>@item.lobby.Name</div>
+                <div>Creator: @item.lobby.Creator.Nickname</div>
+                <div>Date: @item.lobby.CreationTime</div>
+                <div>Users:</div>
+                <ul>
+                    @foreach (var user in @item.lobby.Users)
+                    {
+                        <li>@user.Nickname</li>
+                    }
+                </ul>
+                <div>State: @item.lobby.State</div>
+                <button @onclick="()=>JoinLobby(item.index)" class="btn btn-primary">Join</button>
+                <hr>
+            </div>
+        }
+    </div>
+}
 
-Welcome to your new app.
+@if (currentState == State.InLobby)
+{
+    <h1>Lobby</h1>
+    <div>@currentLobby.Name</div>
+    <div>Creator: @currentLobby.Creator.Nickname</div>
+    <div>Date: @currentLobby.CreationTime</div>
+    <div>Users:</div>
+    <ul>
+        @foreach (var user in currentLobby.Users)
+        {
+            <li>@user.Nickname</li>
+        }
+    </ul>
+    <div>State: @currentLobby.State</div>
+    <button @onclick="()=>LeaveLobby()" class="btn btn-danger">Leave</button>
+}
 
-<SurveyPrompt Title="How is Blazor working for you?" />
+@if (currentState == State.InGame)
+{
+    <h1>Game</h1>
+    <div class="game-board">
+        @foreach (var row in currentGame.Board.Cells)
+        {
+            @foreach (var cell in row)
+            {
+                <div class=@GetCellHtmlClass(cell)>
+                    @GetCellPieceSymbol(cell)
+                </div>
+            }
+        }
+    </div>
+}
+
+@code 
+{
+    public enum State
+    {
+        InLobbyList,
+        InLobby,
+        InGame
+    }
+
+    private HubConnection? hubConnection;
+    private string? nicknameInput = "No name";
+    private string? lobbyNameInput = "Lobby";
+
+    public State currentState;
+    private List<Lobby> availableLobbies = new List<Lobby>();
+    private Lobby? currentLobby;
+
+    private Game? currentGame = new Game();
+    private Cell selectedCell;
+    private List<List<Cell>> validMoves;
+    private List<Cell> highlithedCells;
+    private List<Cell> enteredMove;
+
+    public bool IsConnected =>
+        hubConnection?.State == HubConnectionState.Connected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/gamehub"))
+            .Build();
+
+        hubConnection.On<Lobby>("LobbyAdded", (lobby) =>
+        {
+            availableLobbies.Add(lobby);
+            if (currentState == State.InLobbyList)
+            {
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<List<Lobby>>("GetAllLobies", (lobbies) =>
+        {
+            availableLobbies = lobbies;
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<Lobby>("JoinedLobby", (lobby) =>
+        {
+            if (currentState == State.InLobbyList)
+            {
+                currentState = State.InLobby;
+                currentLobby = lobby;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On("LeftLobby", () =>
+        {
+            if (currentState == State.InLobby)
+            {
+                currentState = State.InLobbyList;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<Lobby>("LobbyUpdated", (lobby) =>
+        {
+            if (currentState == State.InLobby)
+            {
+                currentLobby = lobby;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<Game>("GameStarted", (game) =>
+        {
+            if (currentState == State.InLobbyList ||
+                currentState == State.InLobby)
+            {
+                currentState = State.InGame;
+                currentGame = game;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<Game>("GameUpdated", (game) =>
+        {
+            if (currentState == State.InGame)
+            {
+                currentGame = game;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task ChangeNickname()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("ChangeNickname", nicknameInput);
+        }
+    }
+
+    private async Task CreateLobby()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("AddLobby", lobbyNameInput);
+        }
+    }
+
+    private async Task JoinLobby(int lobbyId)
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("JoinLobby", lobbyId);
+        }
+    }
+
+    private async Task LeaveLobby()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("LeaveLobby");
+        }
+    }
+
+    private async Task MakeMove()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("MakeMove", enteredMove);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private string GetCellHtmlClass(Cell cell)
+    {
+        return cell.Color == CellColor.Light ? "light-cell" : "dark-cell";
+    }
+
+    private string GetCellPieceSymbol(Cell cell)
+    {
+        if (cell.Piece == null)
+        {
+            return "";
+        }
+        return $"{cell.Piece.Side} {cell.Piece.Kind}";
+    }
+}

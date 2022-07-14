@@ -1,0 +1,31 @@
+﻿body {
+}
+
+.game-board {
+    width: 640px;
+    height: 640px;
+    margin: 20px;
+    border: 0px solid #333;
+}
+
+.dark-cell {
+    float: left;
+    width: 80px;
+    height: 80px;
+    background-color: #999;
+    font-size: 25px;
+    text-align: center;
+    display: table-cell;
+    vertical-align: middle;
+}
+
+.light-cell {
+    float: left;
+    width: 80px;
+    height: 80px;
+    background-color: #fff;
+    font-size: 25px;
+    text-align: center;
+    display: table-cell;
+    vertical-align: middle;
+}
