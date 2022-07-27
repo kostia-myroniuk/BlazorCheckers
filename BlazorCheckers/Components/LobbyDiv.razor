@@ -1,0 +1,22 @@
+﻿@using BlazorCheckers.Multiplayer
+
+@namespace BlazorCheckers.Components
+
+<div>
+    <div>@Lobby.Name</div>
+    <div>Creator: @Lobby.Creator.Nickname</div>
+    <div>Date: @Lobby.CreationTime</div>
+    <div>Users:</div>
+    <ul>
+        @foreach (var user in @Lobby.Users)
+        {
+            <li>@user.Nickname</li>
+        }
+    </ul>
+    <div>State: @Lobby.State</div>
+</div>
+
+@code {
+    [Parameter]
+    public Lobby Lobby { get; set; }
+}

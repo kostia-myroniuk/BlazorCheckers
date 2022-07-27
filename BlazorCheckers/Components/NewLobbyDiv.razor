@@ -1,0 +1,26 @@
+﻿@using Microsoft.AspNetCore.SignalR.Client
+
+@namespace BlazorCheckers.Components
+
+<div class="form-group">
+    <label>Lobby name:<input @bind="lobbyNameInput" size="50" /></label>
+    <button class="btn btn-primary" @onclick="CreateLobby" disabled="@(!IsConnected)">Create</button>
+</div>
+
+@code {
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+
+    public bool IsConnected =>
+        HubConnection?.State == HubConnectionState.Connected;
+    
+    private string? lobbyNameInput = "Lobby";
+
+    private async Task CreateLobby()
+    {
+        if (HubConnection is not null)
+        {
+            await HubConnection.SendAsync("AddLobby", lobbyNameInput);
+        }
+    }
+}

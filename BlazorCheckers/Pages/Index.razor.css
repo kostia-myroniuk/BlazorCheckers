@@ -29,3 +29,20 @@
     display: table-cell;
     vertical-align: middle;
 }
+
+.dark-piece {
+    color: black;
+}
+
+.light-piece {
+    color: white;
+}
+
+.selected-cell {
+    border-color: lightgreen;
+    /*border: 5px;*/
+}
+
+.highlighted-cell {
+    border-color: yellow;
+}

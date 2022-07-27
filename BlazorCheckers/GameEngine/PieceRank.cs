@@ -1,8 +1,8 @@
 ﻿namespace BlazorCheckers.GameEngine
 {
-    public enum Side
+    public enum PieceRank
     {
-        Light,
-        Dark
+        Pawn,
+        King
     }
 }

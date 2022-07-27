@@ -1,44 +1,29 @@
 ﻿@page "/"
+@using BlazorCheckers.Components
 @using BlazorCheckers.Multiplayer
-@using ConsoleCheckers.Game
+@using BlazorCheckers.GameEngine
 @using Microsoft.AspNetCore.SignalR.Client;
+@using Newtonsoft.Json
 @inject NavigationManager NavigationManager
 
 <PageTitle>Checkers</PageTitle>
 
+@if (currentState == State.EnteringNickname)
+{
+    <NicknameDiv HubConnection="hubConnection"></NicknameDiv>
+}
+
 @if (currentState == State.InLobbyList)
 {
     <h1>Lobby list</h1>
-    <div class="form-group">
-        <label>
-            Nickname:
-            <input @bind="nicknameInput"/>
-        </label>
-        <button class="btn btn-primary" @onclick="ChangeNickname" disabled="@(!IsConnected)">Change</button>
-    </div>
-    <div class="form-group">
-        <label>
-            Lobby name:
-            <input @bind="lobbyNameInput" size="50" />
-        </label>
-        <button class="btn btn-primary" @onclick="CreateLobby" disabled="@(!IsConnected)">Create</button>
-    </div>
+    <h3>Player: @(nickname)</h3>
+    <NewLobbyDiv HubConnection="hubConnection"></NewLobbyDiv>
     <hr>
     <div>
         @foreach (var item in availableLobbies.Select((lobby, index) => new { lobby, index }))
         {
             <div>
-                <div>@item.lobby.Name</div>
-                <div>Creator: @item.lobby.Creator.Nickname</div>
-                <div>Date: @item.lobby.CreationTime</div>
-                <div>Users:</div>
-                <ul>
-                    @foreach (var user in @item.lobby.Users)
-                    {
-                        <li>@user.Nickname</li>
-                    }
-                </ul>
-                <div>State: @item.lobby.State</div>
+                <LobbyDiv Lobby="item.lobby"></LobbyDiv>
                 <button @onclick="()=>JoinLobby(item.index)" class="btn btn-primary">Join</button>
                 <hr>
             </div>
@@ -49,31 +34,22 @@
 @if (currentState == State.InLobby)
 {
     <h1>Lobby</h1>
-    <div>@currentLobby.Name</div>
-    <div>Creator: @currentLobby.Creator.Nickname</div>
-    <div>Date: @currentLobby.CreationTime</div>
-    <div>Users:</div>
-    <ul>
-        @foreach (var user in currentLobby.Users)
-        {
-            <li>@user.Nickname</li>
-        }
-    </ul>
-    <div>State: @currentLobby.State</div>
+    <LobbyDiv Lobby="currentLobby"></LobbyDiv>
     <button @onclick="()=>LeaveLobby()" class="btn btn-danger">Leave</button>
 }
 
-@if (currentState == State.InGame)
+@if (currentState == State.InGame && board != null)
 {
     <h1>Game</h1>
+    <h3>Current player: @(currentSide)</h3>
     <div class="game-board">
-        @foreach (var row in currentGame.Board.Cells)
+        @foreach (var row in board.Cells)
         {
             @foreach (var cell in row)
             {
-                <div class=@GetCellHtmlClass(cell)>
+                <button @onclick="()=>OnButtonClick(cell)" class=@GetCellHtmlClass(cell)>
                     @GetCellPieceSymbol(cell)
-                </div>
+                </button>
             }
         }
     </div>
@@ -83,24 +59,28 @@
 {
     public enum State
     {
+        EnteringNickname,
         InLobbyList,
         InLobby,
         InGame
     }
 
     private HubConnection? hubConnection;
-    private string? nicknameInput = "No name";
-    private string? lobbyNameInput = "Lobby";
 
     public State currentState;
+    private string nickname = "";
     private List<Lobby> availableLobbies = new List<Lobby>();
     private Lobby? currentLobby;
 
-    private Game? currentGame = new Game();
-    private Cell selectedCell;
-    private List<List<Cell>> validMoves;
-    private List<Cell> highlithedCells;
-    private List<Cell> enteredMove;
+    private Side currentSide;
+    private Board? board = new Board();
+    private Cell? selectedCell;
+    //private List<List<Cell>> validMoves = new List<List<Cell>>();
+    private List<Cell> highlightedCells = new List<Cell>();
+    //private List<Cell> enteredMove = new List<Cell>();
+    private List<RegularMove> regularMoves = new List<RegularMove>();
+    private List<List<CaptureMove>> captureMoves = new List<List<CaptureMove>>();
+    private List<RegularMove> currentMove = new List<RegularMove>();
 
     public bool IsConnected =>
         hubConnection?.State == HubConnectionState.Connected;
@@ -111,6 +91,13 @@
             .WithUrl(NavigationManager.ToAbsoluteUri("/gamehub"))
             .Build();
 
+        hubConnection.On<string>("EnteredNickname", (nickname) =>
+        {
+            this.nickname = nickname;
+            currentState = State.InLobbyList;
+            InvokeAsync(StateHasChanged);
+        });
+
         hubConnection.On<Lobby>("LobbyAdded", (lobby) =>
         {
             availableLobbies.Add(lobby);
@@ -120,18 +107,28 @@
             }
         });
 
-        hubConnection.On<List<Lobby>>("GetAllLobies", (lobbies) =>
+        hubConnection.On<string>("GetAllLobies", (lobbies) =>
         {
-            availableLobbies = lobbies;
+            availableLobbies = JsonConvert.DeserializeObject<List<Lobby>>(lobbies);
             InvokeAsync(StateHasChanged);
         });
 
-        hubConnection.On<Lobby>("JoinedLobby", (lobby) =>
+        hubConnection.On<string>("JoinedLobby", (lobby) =>
         {
             if (currentState == State.InLobbyList)
             {
                 currentState = State.InLobby;
-                currentLobby = lobby;
+                currentLobby = JsonConvert.DeserializeObject<Lobby>(lobby);
+                InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<int, string>("LobbyUpdated", (lobbyId, lobby) =>
+        {
+            if (currentState == State.InLobbyList && 
+                lobbyId >= 0 && lobbyId < availableLobbies.Count)
+            {
+                availableLobbies[lobbyId] = JsonConvert.DeserializeObject<Lobby>(lobby);
                 InvokeAsync(StateHasChanged);
             }
         });
@@ -145,31 +142,38 @@
             }
         });
 
-        hubConnection.On<Lobby>("LobbyUpdated", (lobby) =>
-        {
-            if (currentState == State.InLobby)
-            {
-                currentLobby = lobby;
-                InvokeAsync(StateHasChanged);
-            }
-        });
-
-        hubConnection.On<Game>("GameStarted", (game) =>
+        hubConnection.On<string, Side, List<List<CaptureMove>>, List<RegularMove>>("GameStarted", 
+            (board, currentSide, captureMoves, regularMoves) =>
         {
             if (currentState == State.InLobbyList ||
                 currentState == State.InLobby)
             {
                 currentState = State.InGame;
-                currentGame = game;
+                this.board = JsonConvert.DeserializeObject<Board>(board, 
+                    new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace });
+                this.currentSide = currentSide;
+                this.captureMoves = captureMoves;
+                this.regularMoves = regularMoves;
+
+                selectedCell = null;
+                highlightedCells = new List<Cell>();
+                currentMove = new List<RegularMove>();
+
                 InvokeAsync(StateHasChanged);
             }
-        });
+        }); 
 
-        hubConnection.On<Game>("GameUpdated", (game) =>
+        hubConnection.On<string, Side, List<List<CaptureMove>>, List<RegularMove>>("GameUpdated", 
+            (board, currentSide, captureMoves, regularMoves) =>
         {
             if (currentState == State.InGame)
             {
-                currentGame = game;
+                this.board = JsonConvert.DeserializeObject<Board>(board, 
+                    new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace });
+                this.currentSide = currentSide;
+                this.captureMoves = captureMoves;
+                this.regularMoves = regularMoves;
+
                 InvokeAsync(StateHasChanged);
             }
         });
@@ -177,44 +181,24 @@
         await hubConnection.StartAsync();
     }
 
-    private async Task ChangeNickname()
-    {
-        if (hubConnection is not null)
-        {
-            await hubConnection.SendAsync("ChangeNickname", nicknameInput);
-        }
-    }
-
-    private async Task CreateLobby()
-    {
-        if (hubConnection is not null)
-        {
-            await hubConnection.SendAsync("AddLobby", lobbyNameInput);
-        }
-    }
-
     private async Task JoinLobby(int lobbyId)
     {
-        if (hubConnection is not null)
-        {
-            await hubConnection.SendAsync("JoinLobby", lobbyId);
-        }
+        await (hubConnection?.SendAsync("JoinLobby", lobbyId) ?? Task.CompletedTask);
     }
 
     private async Task LeaveLobby()
     {
-        if (hubConnection is not null)
-        {
-            await hubConnection.SendAsync("LeaveLobby");
-        }
+        await (hubConnection?.SendAsync("LeaveLobby") ?? Task.CompletedTask);
     }
 
-    private async Task MakeMove()
+    private async Task MakeRegularMove(RegularMove move)
     {
-        if (hubConnection is not null)
-        {
-            await hubConnection.SendAsync("MakeMove", enteredMove);
-        }
+        await (hubConnection?.SendAsync("MakeRegularMove", move) ?? Task.CompletedTask);
+    }
+
+    private async Task MakeCaptureMove(RegularMove move)
+    {
+        await (hubConnection?.SendAsync("MakeCaptureMove", move) ?? Task.CompletedTask);
     }
 
     public async ValueTask DisposeAsync()
@@ -225,17 +209,154 @@
         }
     }
 
+    private async Task OnButtonClick(Cell clickedCell)
+    {
+        if (currentMove.Count == 0)
+        {
+            if (selectedCell == null)
+            {
+                if (clickedCell.Piece?.Side == currentSide)
+                {
+                    selectedCell = clickedCell;
+                    highlightedCells = GetHighlightedCells();
+                    InvokeAsync(StateHasChanged);
+                }
+            }
+            else if (clickedCell == selectedCell)
+            {
+                selectedCell = null;
+                highlightedCells.Clear();
+                InvokeAsync(StateHasChanged);
+            }
+            else if (highlightedCells.Contains(clickedCell))
+            {
+                if (captureMoves.Count > 0)
+                {
+                    var move = new RegularMove(selectedCell.GetPosition(), clickedCell.GetPosition());
+                    currentMove.Add(move);
+
+                    selectedCell = clickedCell;
+                    highlightedCells = GetHighlightedCells();
+
+                    if (highlightedCells.Count == 0)
+                    {
+                        selectedCell = null;
+                        highlightedCells.Clear();
+                    }
+                    InvokeAsync(StateHasChanged);
+
+                    await MakeCaptureMove(move);
+                }
+                else
+                {
+                    var move = new RegularMove(selectedCell.GetPosition(), clickedCell.GetPosition());
+
+                    selectedCell = null;
+                    highlightedCells.Clear();
+                    InvokeAsync(StateHasChanged);
+                    
+                    await MakeRegularMove(move);
+                }
+            }
+            else if (clickedCell.Piece?.Side == currentSide)
+            {
+                selectedCell = clickedCell;
+                highlightedCells = GetHighlightedCells();
+                InvokeAsync(StateHasChanged);
+            }
+        }
+        else
+        {
+            if (highlightedCells.Contains(clickedCell))
+            {
+                var move = new RegularMove(selectedCell.GetPosition(), clickedCell.GetPosition());
+                currentMove.Add(move);
+                selectedCell = clickedCell;
+                highlightedCells = GetHighlightedCells();
+
+                if (highlightedCells.Count == 0)
+                {
+                    selectedCell = null;
+                    highlightedCells.Clear();
+                }
+                InvokeAsync(StateHasChanged);
+
+                await MakeCaptureMove(move);
+            }
+        }
+    }
+
+    private List<Cell> GetHighlightedCells()
+    {
+        List<Cell> cells = new List<Cell>();
+        if (captureMoves.Count > 0)
+        {
+            foreach(List<CaptureMove> moveSequence in captureMoves)
+            {
+                if (currentMove.Count >= moveSequence.Count)
+                {
+                    continue;
+                }
+                bool different = false;
+                for (int i = 0; i < currentMove.Count; i ++)
+                {
+                    if (currentMove[i].Start != moveSequence[i].Start ||
+                        currentMove[i].End != moveSequence[i].End)
+                    {
+                        different = true;
+                        break;
+                    }
+                }
+                if (different)
+                {
+                    continue;
+                }
+                CaptureMove nextMove = moveSequence[currentMove.Count];
+                cells.Add(board.GetCell(nextMove.End));
+            }
+        }
+        else
+        {
+            foreach(RegularMove move in regularMoves)
+            {
+                if (move.Start == selectedCell.GetPosition())
+                {
+                    cells.Add(board.GetCell(move.End));
+                }
+            }
+        }
+        return cells;
+    }
+
+    private Cell GetBoardCell(Cell cell)
+    {
+        return board.Cells[cell.Row][cell.Column];
+    }
+    
     private string GetCellHtmlClass(Cell cell)
     {
-        return cell.Color == CellColor.Light ? "light-cell" : "dark-cell";
+        string result = cell.Color == CellColor.Light ? "light-cell" : "dark-cell";
+        if (cell == selectedCell)
+        {
+            result += " selected-cell";
+        }
+        if (highlightedCells != null && highlightedCells.Contains(cell))
+        {
+            result += " highlighted-cell";
+        }
+        if (cell.Piece?.Side == Side.Light)
+        {
+            result += " light-piece";
+        }
+        if (cell.Piece?.Side == Side.Dark)
+        {
+            result += " dark-piece";
+        }
+        return result;
     }
 
     private string GetCellPieceSymbol(Cell cell)
     {
-        if (cell.Piece == null)
-        {
-            return "";
-        }
-        return $"{cell.Piece.Side} {cell.Piece.Kind}";
+        return cell.Piece == null ? "" : $"{cell.Piece.Side} {cell.Piece.Kind}";
     }
 }

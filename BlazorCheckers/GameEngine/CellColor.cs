@@ -1,4 +1,4 @@
-﻿namespace ConsoleCheckers.Game
+﻿namespace BlazorCheckers.GameEngine
 {
     public enum CellColor
     {

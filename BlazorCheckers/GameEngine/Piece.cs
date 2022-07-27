@@ -1,4 +1,4 @@
-﻿namespace ConsoleCheckers.Game
+﻿namespace BlazorCheckers.GameEngine
 {
     public class Piece
     {
@@ -6,14 +6,14 @@
         public bool CanCaptureBackwards { get; }
         public bool CanFly { get; }
         public Side Side { get; }
-        public PieceKind Kind { get; }
+        public PieceRank Kind { get; }
 
-        public Piece(Side side, PieceKind kind)
+        public Piece(Side side, PieceRank kind)
         {
             Side = side;
             Kind = kind;
 
-            if (kind == PieceKind.Pawn)
+            if (kind == PieceRank.Pawn)
             {
                 CanMoveBackwards = false;
                 CanCaptureBackwards = false;

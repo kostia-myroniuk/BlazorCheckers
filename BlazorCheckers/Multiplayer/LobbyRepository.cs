@@ -18,5 +18,17 @@
         {
             Lobbies.Remove(lobby);
         }
+
+        public Tuple<int, Lobby>? Find(User user)
+        {
+            for (int i = 0; i < Lobbies.Count; i++)
+            {
+                if (Lobbies[i].HasUser(user))
+                {
+                    return new Tuple<int, Lobby>(i, Lobbies[i]);
+                }
+            }
+            return null;
+        }
     }
 }
