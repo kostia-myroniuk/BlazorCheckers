@@ -1,4 +1,4 @@
-using BlazorCheckers.Multiplayer;
+using BlazorCheckers.Data;
 using BlazorCheckers.Hubs;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddSingleton<IMultiplayerData, MultiplayerData>();
 
 var app = builder.Build();
 
@@ -26,7 +27,7 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.MapBlazorHub();
-app.MapHub<GameHub>("/gamehub");
+app.MapHub<MultiplayerHub>("/gamehub");
 app.MapFallbackToPage("/_Host");
 
 app.Run();

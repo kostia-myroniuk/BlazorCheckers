@@ -1,0 +1,58 @@
+﻿@using Microsoft.AspNetCore.SignalR.Client
+@using BlazorCheckers.GameEngine
+@using BlazorCheckers.Data.Items
+
+@namespace BlazorCheckers.Components
+
+<div class="form-createlobby w-100 m-auto text-center">
+        <h1 class="h3 mb-3 fw-normal">Create lobby</h1>
+        <div class="form-floating mb-3">
+            <input class="form-control" id="floatingInput" placeholder="Lobby name" @bind="LobbyNameInput">
+            <label for="floatingInput">Lobby name</label>
+        </div>
+
+        <h5 class="mb-1 fw-normal">First player side</h5>
+        <select class="form-select mb-2" @bind="sideOption">
+            @foreach (var lobbySideOption in Enum.GetValues<LobbySideOption>())
+            {
+                <option value="@lobbySideOption">@lobbySideOption.ToString()</option>
+            }
+        </select>
+
+        <h5 class="mb-1 fw-normal">Game mode</h5>
+        <select class="form-select mb-4" @bind="gameModeOption">
+            @foreach (var gameMode in Enum.GetValues<GameMode>())
+            {
+                <option value="@gameMode">@gameMode.ToString()</option>
+            }
+        </select>
+
+        <button class="w-100 btn btn-lg btn-primary mb-1" @onclick="()=>CreateLobby()" disabled="@(!IsConnected)">Create</button>
+        <button class="w-100 btn btn-lg btn-danger" @onclick="OnCancelCallback">Cancel</button>
+</div>
+
+@code {
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+    [Parameter]
+    public EventCallback OnCreateCallback { get; set; }
+    [Parameter]
+    public EventCallback OnCancelCallback { get; set; }
+    [Parameter]
+    public string LobbyNameInput { get; set; } = "Lobby";
+
+    public bool IsConnected =>
+        HubConnection?.State == HubConnectionState.Connected;
+
+    private LobbySideOption sideOption;
+    private GameMode gameModeOption;
+
+    private async Task CreateLobby()
+    {
+        if (HubConnection is not null)
+        {
+            await HubConnection.SendAsync("AddLobby", LobbyNameInput, sideOption, gameModeOption);
+            await OnCreateCallback.InvokeAsync();
+        }
+    }
+}

@@ -1,0 +1,50 @@
+﻿.lost-pieces-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+}
+
+.lost-pieces {
+    width: 640px;
+    height: 35px;
+    display: flex;
+}
+
+.lost-piece {
+    width: 40px;
+    height: 40px;
+    margin-right: -25px;
+}
+
+.nickname {
+    margin-left: auto;
+    align-self: center;
+}
+
+.piece {
+    background-color: white;
+    height: 80%;
+    width: 80%;
+    border-radius: 50%;
+    display: inline-block;
+    border: double black 15px;
+}
+
+.dark-piece {
+    background-color: dimgrey;
+    border-color: #483e3e;
+}
+
+.light-piece {
+    background-color: white;
+    border-color: #545454;
+}
+
+.king {
+    border-color: gold;
+    border-style: ridge;
+}
+
+.piece.piece-small {
+    border-width: 10px;
+}

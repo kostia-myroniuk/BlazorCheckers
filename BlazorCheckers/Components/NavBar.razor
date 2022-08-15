@@ -1,0 +1,27 @@
+﻿@namespace BlazorCheckers.Components
+
+<nav class="navbar navbar-dark navbar-expand-lg bg-dark mb-3">
+    <div class="container-fluid">
+        <div class="navbar-header">
+            <a class="navbar-brand" href="">Blazor Checkers</a>
+        </div>
+        <ul class="me-auto navbar-nav">
+            <li class="nav-item">
+                <span class="nav-link active">@Section</span>
+            </li>
+        </ul>
+        <ul class="navbar-nav navbar-right">
+            @if (!string.IsNullOrEmpty(PlayerNickname))
+            {
+                <li><span class="navbar-text">Player: @PlayerNickname</span></li>
+            }
+        </ul>
+    </div>
+</nav>
+
+@code {
+    [Parameter]
+    public string Section { get; set; }
+    [Parameter]
+    public string PlayerNickname { get; set; }
+}

@@ -1,0 +1,30 @@
+﻿@using Microsoft.AspNetCore.SignalR.Client
+
+@namespace BlazorCheckers.Components
+
+<div class="form-signin w-100 m-auto text-center">
+        <h1 class="h3 mb-3 fw-normal">Choose nickname</h1>
+        <div class="form-floating mb-3">
+            <input class="form-control" id="floatingInput" placeholder="Nickname" @bind="nicknameInput">
+            <label for="floatingInput">Nickname</label>
+        </div>
+        <button class="w-100 btn btn-lg btn-primary" @onclick="ChangeNickname" disabled="@(!IsConnected)">Ok</button>
+</div>
+
+@code {
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+
+    public bool IsConnected =>
+        HubConnection?.State == HubConnectionState.Connected;
+    
+    private string? nicknameInput = "No name";
+
+    private async Task ChangeNickname()
+    {
+        if (HubConnection is not null)
+        {
+            await HubConnection.SendAsync("SignIn", nicknameInput);
+        }
+    }
+}

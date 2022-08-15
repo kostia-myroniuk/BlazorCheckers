@@ -1,0 +1,45 @@
+﻿@using BlazorCheckers.Data;
+@using BlazorCheckers.Data.Items
+@using Microsoft.AspNetCore.SignalR.Client
+
+@namespace BlazorCheckers.Components
+
+<div>
+    <div class="d-flex align-items-center">
+        <strong>Waiting for opponent...</strong>
+        <div class="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+    </div>
+
+    <ul class="list-group list-group-flush m-3">
+        <li class="list-group-item">Lobby name: @Lobby.Name</li>
+        <li class="list-group-item">First move: @Lobby.FirstPlayerSide.ToString()</li>
+        <li class="list-group-item">Game mode: @Lobby.GameMode.ToString() checkers</li>
+        <li class="list-group-item">Created by: @Lobby.Creator.Nickname</li>
+        <li class="list-group-item">Date: @Lobby.CreationTime</li>
+        <li class="list-group-item">
+            Players:
+            <ul>
+                @foreach (var user in @Lobby.Users)
+                {
+                    <li>@user.Nickname</li>
+                }
+            </ul>
+        </li>
+    </ul>
+
+    <div class="d-flex justify-content-center">
+        <button @onclick="async () => await LeaveLobby()" class="btn btn-danger">Leave</button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+    [Parameter]
+    public Lobby Lobby { get; set; }
+
+    private async Task LeaveLobby()
+    {
+        await (HubConnection?.SendAsync("LeaveLobby") ?? Task.CompletedTask);
+    }
+}

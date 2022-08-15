@@ -1,307 +1,304 @@
 ﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BlazorCheckers.GameEngine
 {
+    public enum GameState
+    { 
+        InProgress,
+        LightPlayerWon,
+        DarkPlayerWon
+    }
+
     public class Game
     {
-        private readonly Dictionary<Side, Side> oppositePlayers =
-            new Dictionary<Side, Side>()
-            {
-                { Side.Light, Side.Dark },
-                { Side.Dark, Side.Light }
-            };
+        private readonly List<Direction> allDirections;
+        private readonly List<Direction> upDirections;
+        private readonly List<Direction> downDirections;
 
-        private readonly List<Direction> upDirections =
-            new List<Direction>() 
-            { 
-                Direction.UpLeft, Direction.UpRight 
-            };
-        private readonly List<Direction> downDirections =
-            new List<Direction>()
-            { 
-                Direction.UpLeft, Direction.UpRight, 
-                Direction.DownLeft, Direction.DownRight 
-            };
-        private readonly List<Direction> allDirections =
-            new List<Direction>()
-            {
-                Direction.DownLeft, Direction.DownRight
-            };
-
+        [JsonProperty]
         public Board Board { get; }
-        public Side CurrentPlayer { get; private set; }
-        public List<List<Cell>> ValidMoves { get; private set; } = new List<List<Cell>>();
-        public List<RegularMove> RegularMoves { get; private set; } = new List<RegularMove>();
-        public List<List<CaptureMove>> CaptureMoves { get; private set; } = new List<List<CaptureMove>>();
+        [JsonProperty]
+        public Side CurrentSide { get; private set; }
+        [JsonProperty]
+        public List<Piece> LostPieces { get; }
+        [JsonProperty]
+        public List<CaptureSequence> Sequences { get; }
+        [JsonProperty]
+        public List<Move> RegularMoves { get; }
+        [JsonProperty]
+        public List<Move> CurrentMoves { get; }
+        [JsonProperty]
+        public GameState CurrentState { get; private set; }
 
-        private List<CaptureMove> currentMove = new List<CaptureMove>();
-        private List<Piece> lostPieces = new List<Piece>();
 
-        public Game()
+        [JsonProperty]
+        private RuleSet ruleSet;
+
+        public Game(GameMode gameMode)
         {
             Board = new Board();
-            CalculateValidMoves();
+            LostPieces = new List<Piece>();
+            RegularMoves = new List<Move>();
+            ruleSet = new RuleSet(gameMode);
+
+            allDirections = Enum.GetValues<Direction>().ToList();
+            upDirections = allDirections.Where(d => d.ToString().Contains("Up")).ToList();
+            downDirections = allDirections.Where(d => d.ToString().Contains("Down")).ToList();
+
+            Sequences = new List<CaptureSequence>();
+            RegularMoves = new List<Move>();
+            CurrentMoves = new List<Move>();
+            FindValidMoves();
         }
 
-        private void CalculateValidMoves()
+        [JsonConstructor]
+        public Game(Board board, Side currentSide, List<Piece> lostPieces, List<CaptureSequence> sequences, 
+            List<Move> regularMoves, List<Move> currentMoves, GameState currentState, RuleSet ruleSet)
         {
-            CaptureMoves.Clear();
+            Board = board;
+            CurrentSide = currentSide;
+            LostPieces = lostPieces;
+            Sequences = sequences;
+            RegularMoves = regularMoves;
+            CurrentMoves = currentMoves;
+            CurrentState = currentState;
+            this.ruleSet = ruleSet;
+
+            allDirections = Enum.GetValues<Direction>().ToList();
+            upDirections = allDirections.Where(d => d.ToString().Contains("Up")).ToList();
+            downDirections = allDirections.Where(d => d.ToString().Contains("Down")).ToList();
+        }
+
+        public void ApplyRegularMove(Move move)
+        {
+            if (!RegularMoves.Any(m => m.IsEqual(move)))
+            {
+                return;
+            }
+
+            Cell startCell = Board.GetCell(move.StartRow, move.StartColumn);
+            Cell endCell = Board.GetCell(move.EndRow, move.EndColumn);
+
+            endCell.Piece = startCell.Piece;
+            startCell.Piece = null;
+            TryPromotingPiece(endCell);
+
+            EndTurn();
+        }
+
+        public void ApplyCaptureMove(Move move)
+        {
+            var sequenceMoves = new List<Move>(CurrentMoves);
+            sequenceMoves.Add(move);
+
+            CaptureSequence? sequence = Sequences
+                .FirstOrDefault(s => s.StartsWith(sequenceMoves));
+            
+            if (sequence is null)
+            {
+                return;
+            }
+
+            Cell capturedCell = sequence.CapturedCells[sequenceMoves.Count - 1];
+            Cell startCell = Board.GetCell(move.StartRow, move.StartColumn);
+            Cell endCell = Board.GetCell(move.EndRow, move.EndColumn);
+
+            if (capturedCell.Piece is not null)
+            {
+                LostPieces.Add(capturedCell.Piece);
+                capturedCell.Piece = null;
+            }
+
+            endCell.Piece = startCell.Piece;
+            startCell.Piece = null;
+            TryPromotingPiece(endCell);
+
+            CurrentMoves.Add(move);
+
+            bool hasNextMoves = Sequences.Any(s => s.StartsWith(sequenceMoves) && 
+                s.Moves.Count > sequenceMoves.Count);
+
+            if (!hasNextMoves)
+            {
+                EndTurn();
+            }
+        }
+
+        private void TryPromotingPiece(Cell cell)
+        {
+            if (cell.Piece is not null && cell.Piece.Rank == PieceRank.Pawn && 
+                Board.IsCrowningCell(cell, CurrentSide))
+            {
+                cell.Piece = new Piece(CurrentSide, PieceRank.King);
+            }
+        }
+
+        private void EndTurn()
+        {
+            CurrentSide = CurrentSide == Side.Light ? Side.Dark : Side.Light;
+            CurrentMoves.Clear();
+            FindValidMoves();
+            UpdateGameState();
+        }
+
+        private void UpdateGameState()
+        {
+            if ((RegularMoves.Count == 0 && Sequences.Count == 0) ||
+                !Board.Cells.Any(c => c.Piece is not null && c.Piece.Side == CurrentSide))
+            {
+                CurrentState = GetSideLosingState(CurrentSide);
+            }
+        }
+
+        public void EndGameEarly(Side gaveUpSide)
+        {
+            CurrentState = GetSideLosingState(gaveUpSide);
+        }
+
+        private GameState GetSideLosingState(Side side)
+        {
+            return side == Side.Light ? GameState.DarkPlayerWon : GameState.LightPlayerWon;
+        }
+
+        private void FindValidMoves()
+        {
+            Sequences.Clear();
             RegularMoves.Clear();
 
-            for (int row = 0; row < Board.SIZE; row++)
-            {
-                for (int col = 0; col < Board.SIZE; col++)
-                {
-                    if (Board.Cells[row][col].Piece?.Side == CurrentPlayer)
-                    {
-                        CaptureMoves.AddRange(GetCaptureMoves(Board.Cells[row][col]));
-                        RegularMoves.AddRange(GetRegularMoves(Board.Cells[row][col]));
-                    }
-                }
-            }
+            List<Cell> currentSideCells = Board.Cells.Where(c => c.Piece?.Side == CurrentSide).ToList();
+            currentSideCells.ForEach(c => Sequences.AddRange(GetCaptureSequences(c)));
 
-            if (CaptureMoves.Count > 0)
+            if (Sequences.Count == 0)
             {
-                RegularMoves.Clear();
-            }
-
-            System.Diagnostics.Debug.WriteLine("Capture moves:");
-            foreach (var sequence in CaptureMoves)
-            {
-                foreach (var move in sequence)
-                {
-                    System.Diagnostics.Debug.Write($"({move.Start.Row} {move.Start.Column} -> {move.Target.Row} {move.Target.Column} -> {move.End.Row} {move.End.Column}) ");
-                }
-                System.Diagnostics.Debug.WriteLine("");
-            }
-
-            System.Diagnostics.Debug.WriteLine("Regular moves:");
-            foreach (var move in RegularMoves)
-            {
-                System.Diagnostics.Debug.WriteLine($"{move.Start.Row} {move.Start.Column} -> {move.End.Row} {move.End.Column}");
+                currentSideCells.ForEach(c => RegularMoves.AddRange(GetRegularMoves(c)));
             }
         }
 
-        private List<List<CaptureMove>> GetCaptureMoves(Cell startCell)
+        private List<Move> GetRegularMoves(Cell startCell)
         {
-            var moves = new List<List<CaptureMove>>();
-            if (startCell.Piece == null)
+            if (startCell.Piece == null || startCell.Piece.Side != CurrentSide)
             {
-                return moves;
+                return new List<Move>();
             }
 
-            var moveStack = new Stack<(Piece, Cell, List<CaptureMove>)>();
-            moveStack.Push(new(startCell.Piece, startCell, new List<CaptureMove>()));
+            var reachableCells = new List<Cell>();
+            bool canFly = startCell.Piece.Rank == PieceRank.King && ruleSet.KingsFly;
+            bool canMoveBackwards = startCell.Piece.Rank == PieceRank.King;
+            int? maxSize = canFly ? null : 1;
 
-            while (moveStack.Count > 0)
+            foreach (var direction in GetDirections(startCell.Piece.Side, canMoveBackwards))
             {
-                var topItem = moveStack.Pop();
-                var movePiece = topItem.Item1;
-                var fromCell = topItem.Item2;
-                var move = topItem.Item3;
+                List<Cell> diagonal = Board.GetDiagonal(startCell, direction, maxSize);
+                reachableCells.AddRange(diagonal.TakeWhile(c => c.Piece is null));
+            }
+
+            return reachableCells.Select(c => new Move(startCell, c)).ToList();
+        }
+
+        private List<CaptureSequence> GetCaptureSequences(Cell startCell)
+        {
+            if (startCell.Piece == null || startCell.Piece.Side != CurrentSide)
+            {
+                return new List<CaptureSequence>();
+            }
+
+            var sequences = new List<CaptureSequence>();
+            var sequenceStack = new Stack<(CaptureSequence, Piece)>();
+
+            sequenceStack.Push((new CaptureSequence(), startCell.Piece));
+
+            while (sequenceStack.Count > 0)
+            {
+                CaptureSequence topSequence = sequenceStack.Peek().Item1;
+                Piece topPiece = sequenceStack.Peek().Item2;
+                sequenceStack.Pop();
+
+                bool canFly = topPiece.Rank == PieceRank.King && ruleSet.KingsFly;
+                bool canMoveBackwards = topPiece.Rank == PieceRank.King || ruleSet.PawnsCaptureBackwards;
+                int? maxSize = canFly ? null : 2;
                 
+                Cell lastCell = GetCaptureSequenceLastCell(topSequence, startCell);
                 bool foundNewMoves = false;
-                foreach (var direction in allDirections)
+
+                foreach (var direction in GetDirections(CurrentSide, canMoveBackwards))
                 {
-                    var targetPosition = fromCell.GetPosition().Adjusted(direction, 1);
-                    var nextPosition = fromCell.GetPosition().Adjusted(direction, 2);
-
-                    while (Board.PositionIsValid(nextPosition))
+                    List<Cell> diagonal = Board.GetDiagonal(lastCell, direction, maxSize)
+                        .SkipWhile(c => c.Piece is null).ToList();
+                    
+                    if (diagonal.Count < 2 || diagonal[0].Piece?.Side == CurrentSide)
                     {
-                        var targetCell = Board.GetCell(targetPosition);
-                        var nextCell = Board.GetCell(nextPosition);
-                        if (CanCapture(targetCell, nextCell, startCell.Piece.Side, move))
-                        {
-                            var nextMove = new List<CaptureMove>(move);
-                            nextMove.Add(new CaptureMove(fromCell.GetPosition(),
-                                targetCell.GetPosition(), nextCell.GetPosition()));
-                            var nextMovePiece = movePiece;
-                            if (Board.IsCrowningCell(nextCell, startCell.Piece.Side) &&
-                                nextMovePiece.Kind == PieceRank.Pawn)
-                            {
-                                nextMovePiece = new Piece(startCell.Piece.Side, PieceRank.King);
-                            }
+                        continue;
+                    }
 
-                            moveStack.Push(new(nextMovePiece, nextCell, nextMove));
-                            foundNewMoves = true;
-                        }
-                        else if (targetCell.Piece != null)
-                        {
-                            break;
-                        }
+                    Cell capturedCell = diagonal[0];
+                    if (topSequence.CapturedCells.Contains(capturedCell))
+                    {
+                        continue;
+                    }
 
-                        if (!startCell.Piece.CanFly)
+                    List<Cell> endCells = diagonal.Skip(1).TakeWhile(c => c.Piece == null).ToList();
+
+                    foreach (var endCell in endCells)
+                    {
+                        var nextMove = new Move(lastCell, endCell);
+                        CaptureSequence nextSequence = topSequence.Copy();
+                        nextSequence.AddCaptureMove(nextMove, capturedCell);
+
+                        var nextPiece = topPiece;
+                        if (ruleSet.PawnsPromoteDuringMove && topPiece.Rank == PieceRank.Pawn && 
+                            Board.IsCrowningCell(endCell, CurrentSide))
                         {
-                            break;
+                            nextPiece = new Piece(CurrentSide, PieceRank.Pawn);
                         }
 
-                        targetPosition.AdjustInDirection(direction);
-                        nextPosition.AdjustInDirection(direction);
+                        sequenceStack.Push((nextSequence, nextPiece));
+                        foundNewMoves = true;
                     }
                 }
 
-                if (!foundNewMoves)
+                if (!foundNewMoves && topSequence.Moves.Count > 0)
                 {
-                    moves.Add(move);
+                    sequences.Add(topSequence);
                 }
             }
 
-            return moves;
-        }
-
-        private bool CanCapture(Cell target, Cell next, Side side, List<CaptureMove> move)
-        {
-            return target.Piece != null && target.Piece.Side != side &&
-                !move.Any(cm => cm.Target == target.GetPosition());
-        }
-
-        private List<RegularMove> GetRegularMoves(Cell startCell)
-        {
-            List<RegularMove> moves = new List<RegularMove>();
-            if (startCell.Piece == null)
+            if (ruleSet.MaximalSequenceChosen)
             {
-                return moves;
-            }
-
-            foreach (var direction in GetDirectionsForPiece(startCell.Piece))
-            {
-                Position position = startCell.GetPosition().Adjusted(direction);
-                
-                for (Cell? cell = Board.GetCell(position); cell != null && cell.Piece == null; 
-                    position = position.Adjusted(direction))
+                CaptureSequence? maxSequence = sequences.MaxBy(s => s.Moves.Count);
+                if (maxSequence is null)
                 {
-                    moves.Add(new RegularMove(startCell.GetPosition(), cell.GetPosition()));
-                    if (!startCell.Piece.CanFly)
-                    {
-                        break;
-                    }
+                    return new List<CaptureSequence>();
                 }
+
+                return sequences.Where(s => s.Moves.Count == maxSequence.Moves.Count).ToList();
             }
-            return moves;
+
+            return sequences;
         }
 
-        private List<Direction> GetDirectionsForPiece(Piece piece)
+        private Cell GetCaptureSequenceLastCell(CaptureSequence sequence, Cell startCell)
         {
-            if (piece.Kind == PieceRank.King)
+            if (sequence.Moves.Count == 0)
+            {
+                return startCell;
+            }
+            
+            Move lastMove = sequence.Moves.Last();
+            return Board.GetCell(lastMove.EndRow, lastMove.EndColumn);
+        }
+
+        private List<Direction> GetDirections(Side side, bool canMoveBackwards)
+        {
+            if (canMoveBackwards)
             {
                 return allDirections;
             }
-            return piece.Side == Side.Light ? downDirections : upDirections;
+            return side == Side.Light ? downDirections : upDirections;
         }
 
-        public void TryPromoting(Cell endCell)
+        public static Side GetOppositeSide(Side side)
         {
-            if (endCell.Piece?.Kind == PieceRank.Pawn &&
-                Board.IsCrowningCell(endCell, CurrentPlayer))
-            {
-                endCell.Piece = new Piece(CurrentPlayer, PieceRank.King);
-            }
-        }
-
-        public void ApplyRegularMove(RegularMove move)
-        {
-            Cell? startCell = Board.GetCell(move.Start);
-            Cell? endCell = Board.GetCell(move.End);
-
-            if (startCell is null || endCell is null ||
-                !RegularMoves.Contains(move))
-            {
-                return;
-            }
-
-            endCell.Piece = startCell.Piece;
-            TryPromoting(endCell);
-            startCell.Piece = null;
-
-            CurrentPlayer = oppositePlayers[CurrentPlayer];
-            currentMove.Clear();
-            CalculateValidMoves();
-        }
-
-        public CaptureMove? GetCaptureMove(RegularMove move)
-        {
-            foreach (var validMove in CaptureMoves)
-            {
-                if (validMove.Count < currentMove.Count)
-                {
-                    continue;
-                }
-                bool startEqually = true;
-                for (int i = 0; i < currentMove.Count; i++)
-                {
-                    if (currentMove[i] != validMove[i])
-                    {
-                        startEqually = false;
-                        break;
-                    }
-                }
-                if (startEqually && validMove.Count >= currentMove.Count + 1 &&
-                    validMove[currentMove.Count].Start == move.Start &&
-                    validMove[currentMove.Count].End == move.End)
-                {
-                    return validMove[currentMove.Count];
-                }
-            }
-            return null;
-        }
-
-        public void ApplyCaptureMove(CaptureMove move)
-        {
-            var resultingMove = new List<CaptureMove>(currentMove);
-            resultingMove.Add(move);
-            bool fits = false;
-            foreach (var validMove in CaptureMoves)
-            {
-                if (validMove.Count < resultingMove.Count)
-                {
-                    continue;
-                }
-                bool startEqually = true;
-                for (int i = 0; i < resultingMove.Count; i++)
-                {
-                    if (resultingMove[i] != validMove[i])
-                    {
-                        startEqually = false;
-                        break;
-                    }
-                }
-                if (startEqually)
-                {
-                    fits = true;
-                    break;
-                }
-            }
-
-            Cell? startCell = Board.GetCell(move.Start);
-            Cell? targetCell = Board.GetCell(move.Target);
-            Cell? endCell = Board.GetCell(move.End);
-
-            if (startCell is null || targetCell is null ||
-                endCell is null || !fits)
-            {
-                return;
-            }
-
-            endCell.Piece = startCell.Piece;
-            TryPromoting(endCell);
-            startCell.Piece = null;
-            if (targetCell.Piece != null)
-            {
-                lostPieces.Add(targetCell.Piece);
-                targetCell.Piece = null;
-            }
-
-            if (CaptureMoves.Contains(resultingMove))
-            {
-                CurrentPlayer = oppositePlayers[CurrentPlayer];
-                currentMove.Clear();
-                CalculateValidMoves();
-            }
+            return side == Side.Light ? Side.Dark : Side.Light;
         }
     }
 }

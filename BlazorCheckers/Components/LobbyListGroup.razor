@@ -1,0 +1,51 @@
+﻿@namespace BlazorCheckers.Components
+@using BlazorCheckers.Data.Items
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="list-group">
+    @foreach (Lobby lobby in Lobbies.OrderByDescending(l => l.CreationTime))
+    {
+        <button type="button" class="list-group-item list-group-item-action lobby-list-item" 
+            @onclick="async () => await JoinLobby(lobby.Id)" 
+                disabled="@(lobby.Users.Count >= 2 || lobby.State != LobbyState.WaitingForGame)">
+                
+            <div class="fw-bold lobby-list-name">@lobby.Name</div>
+
+            <div class="lobby-list-badge">
+                <span class="badge bg-primary rounded-pill">
+                    @(lobby.Users.Count)/2
+                </span>
+            </div>
+
+            <div class="lobby-list-gamemode">
+                Game mode: @(lobby.GameMode)
+            </div>
+
+            <div class="lobby-list-firstside">
+                First player side: @(lobby.FirstPlayerSide)
+            </div>
+
+            <div class="lobby-list-users">
+                Players: @GetUsersText(lobby)
+            </div>
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+    [Parameter]
+    public List<Lobby> Lobbies { get; set; }
+
+    private async Task JoinLobby(string lobbyId)
+    {
+        await (HubConnection?.SendAsync("JoinLobby", lobbyId) ?? Task.CompletedTask);
+    }
+
+    private string GetUsersText(Lobby lobby)
+    {
+        var users = lobby.Users.Select(u => u.Nickname);
+        return string.Join(", ", users);
+    }
+}

@@ -1,0 +1,33 @@
+﻿body {
+}
+
+.lobby-list-item {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-template-areas:
+        'name name badge'
+        'gamemode firstside users';
+}
+
+.lobby-list-name { 
+    grid-area: name;
+}
+
+.lobby-list-badge {
+    grid-area: badge;
+    text-align: right;
+}
+
+.lobby-list-gamemode {
+    grid-area: gamemode;
+}
+
+.lobby-list-firstside {
+    grid-area: firstside;
+    text-align: center;
+}
+
+.lobby-list-users {
+    grid-area: users;
+    text-align: right;
+}

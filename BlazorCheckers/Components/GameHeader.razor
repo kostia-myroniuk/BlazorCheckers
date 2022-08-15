@@ -1,0 +1,52 @@
+﻿@namespace BlazorCheckers.Components
+@using BlazorCheckers.GameEngine
+
+<div>
+    <h5 class="text-center">
+        @GetTurnText()
+    </h5>
+
+    <h5 class="text-center">
+        @PlayerNickname (@PlayerSide.ToString()) <strong>@PlayerScore : @OpponentScore</strong> @OpponentNickname (@OpponentSide.ToString())
+    </h5>
+</div>
+
+@code {
+    [Parameter]
+    public string PlayerNickname { get; set; }
+    [Parameter]
+    public string OpponentNickname { get; set; }
+    [Parameter]
+    public int PlayerScore { get; set; }
+    [Parameter]
+    public int OpponentScore { get; set; }
+    [Parameter]
+    public Side PlayerSide { get; set; }
+    [Parameter]
+    public Side OpponentSide { get; set; }
+    [Parameter]
+    public Side MoveSide { get; set; }
+    [Parameter]
+    public GameMode GameMode { get; set; }
+    [Parameter]
+    public GameState GameState { get; set; }
+
+    private string GetTurnText()
+    {
+        if (GameState == GameState.LightPlayerWon)
+        {
+            return PlayerSide == Side.Light ? "You won" : "You lost";
+        }
+        if (GameState == GameState.DarkPlayerWon)
+        {
+            return PlayerSide == Side.Dark ? "You won" : "You lost";
+        }
+        
+        if (PlayerSide == MoveSide)
+        {
+            return "Your turn";
+        }
+        return "Opponent's turn";
+    }
+
+}

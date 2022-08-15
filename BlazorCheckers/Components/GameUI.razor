@@ -1,0 +1,50 @@
+﻿@using BlazorCheckers.GameEngine
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="ui-container">
+    <div>
+        @if (!GameEnded)
+        {
+            <button class="btn btn-danger" @onclick="async () => await SendGiveUpRequest()">Give up</button>
+        }
+        else
+        {
+            <button class="btn btn-primary" @onclick="async () => await SendRematchRequest()">Rematch</button>
+            <button class="btn btn-danger" @onclick="async () => await Leave()">Leave</button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
+    [Parameter]
+    public EventCallback OnLeaveCallback { get; set; }
+    [Parameter]
+    public bool GameEnded { get; set; }
+    [Parameter]
+    public Side PlayerSide { get; set; }
+    [Parameter]
+    public Side MoveSide { get; set; }
+
+    public async Task SendRematchRequest()
+    {
+        await (HubConnection?.SendAsync("AskForRematch") ?? Task.CompletedTask);
+    }
+
+    public async Task SendGiveUpRequest()
+    {
+        await (HubConnection?.SendAsync("GiveUp") ?? Task.CompletedTask);
+    }
+
+    public async Task Leave()
+    {
+        await (HubConnection?.SendAsync("LeaveGame") ?? Task.CompletedTask);
+        OnLeaveCallback.InvokeAsync();
+    }
+    
+    public string MoveSideText()
+    {
+        return PlayerSide == MoveSide ? "Your turn" : "Opponent's turn";
+    }
+}

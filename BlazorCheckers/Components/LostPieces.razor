@@ -1,0 +1,25 @@
+﻿@using BlazorCheckers.GameEngine
+@namespace BlazorCheckers.Components
+
+<div class="lost-pieces-container"> 
+    <div class="lost-pieces">
+        @foreach (var piece in Pieces.Where(p => p.Side == Side))
+        {
+            <div class="lost-piece">
+                <div class="@Renderer.GetPieceHtmlClass(piece) piece-small"></div>
+            </div>
+        }
+        <div class="nickname">@Nickname (@Side.ToString())</div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public List<Piece> Pieces { get; set; } 
+    [Parameter]
+    public Renderer Renderer { get; set; }
+    [Parameter]
+    public Side Side { get; set; }
+    [Parameter]
+    public string Nickname { get; set; }
+}
