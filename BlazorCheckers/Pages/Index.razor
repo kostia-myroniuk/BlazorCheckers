@@ -60,7 +60,7 @@
             <div class="checkers-board">
                 @foreach (var cell in currentGame.Board.GetCellsRotated(playerSide))
                 {
-                    <button @onclick="()=>OnButtonClick(cell)" 
+                    <button @onclick="async ()=> await OnButtonClick(cell)" 
                         class=@renderer.GetCellHtmlClass(cell, selectedCell, highlightedCells, movableCells)>
                         
                         @if (cell.Piece != null)
